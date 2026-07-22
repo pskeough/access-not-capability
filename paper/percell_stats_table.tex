@@ -1,0 +1,57 @@
+\begin{table}[tbp]
+  \centering
+  \small
+  \caption{Per-cell within-model statistics for all 36 lever cells (answerable questions, strict both-orders consolidation). Win-rate counts ties as half; $p$ is the exact McNemar test on discordant pairs; \checkmark\ marks cells surviving global Holm correction over the 36-test family; $\equiv$ marks cells TOST-equivalent to the null at $\pm0.05$. This appendix prints the statistics Table~\ref{tab:levers} and Figure~\ref{fig:forest} show only as markers. \rcpt{F01}}
+  \label{tab:percell}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{lllcccc}
+    \toprule
+    corpus & model & lever & win-rate & McNemar $p$ & Holm & TOST \\
+    \midrule
+    Private & Llama-8B & RAG-over-base & 84.1 & $4.0\!\times\!10^{-54}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 87.0 & $3.9\!\times\!10^{-60}$ & \checkmark &  \\
+     &  & LoRA-over-base & 48.8 & 0.143 &  & $\equiv$ \\
+     &  & RAFT-over-RAG & 53.8 & 0.035 &  &  \\
+    \addlinespace[2pt]
+     & Phi-3.8B & RAG-over-base & 84.8 & $2.6\!\times\!10^{-54}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 81.7 & $9.9\!\times\!10^{-43}$ & \checkmark &  \\
+     &  & LoRA-over-base & 55.8 & $2.4\!\times\!10^{-5}$ & \checkmark &  \\
+     &  & RAFT-over-RAG & 48.3 & 0.320 &  & $\equiv$ \\
+    \addlinespace[2pt]
+     & MiniCPM-1B & RAG-over-base & 81.2 & $7.6\!\times\!10^{-54}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 81.6 & $5.7\!\times\!10^{-48}$ & \checkmark &  \\
+     &  & LoRA-over-base & 53.2 & $2.1\!\times\!10^{-5}$ & \checkmark & $\equiv$ \\
+     &  & RAFT-over-RAG & 53.9 & 0.050 &  &  \\
+    \addlinespace[2pt]
+    COVID-QA & Llama-8B & RAG-over-base & 86.4 & $1.2\!\times\!10^{-76}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 85.5 & $1.6\!\times\!10^{-76}$ & \checkmark &  \\
+     &  & LoRA-over-base & 53.0 & 0.005 & \checkmark & $\equiv$ \\
+     &  & RAFT-over-RAG & 52.1 & 0.086 &  & $\equiv$ \\
+    \addlinespace[2pt]
+     & Phi-3.8B & RAG-over-base & 83.6 & $5.2\!\times\!10^{-67}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 80.4 & $4.0\!\times\!10^{-54}$ & \checkmark &  \\
+     &  & LoRA-over-base & 54.4 & $8.2\!\times\!10^{-5}$ & \checkmark &  \\
+     &  & RAFT-over-RAG & 50.9 & 0.538 &  & $\equiv$ \\
+    \addlinespace[2pt]
+     & MiniCPM-1B & RAG-over-base & 79.2 & $3.9\!\times\!10^{-62}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 82.2 & $2.5\!\times\!10^{-64}$ & \checkmark &  \\
+     &  & LoRA-over-base & 54.9 & $7.6\!\times\!10^{-9}$ & \checkmark &  \\
+     &  & RAFT-over-RAG & 58.0 & $3.7\!\times\!10^{-6}$ & \checkmark &  \\
+    \addlinespace[2pt]
+    QASPER & Llama-8B & RAG-over-base & 59.6 & $1.9\!\times\!10^{-9}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 59.3 & $3.2\!\times\!10^{-8}$ & \checkmark &  \\
+     &  & LoRA-over-base & 53.5 & 0.002 & \checkmark &  \\
+     &  & RAFT-over-RAG & 54.6 & 0.001 & \checkmark &  \\
+    \addlinespace[2pt]
+     & Phi-3.8B & RAG-over-base & 60.9 & $5.8\!\times\!10^{-15}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 60.4 & $2.7\!\times\!10^{-12}$ & \checkmark &  \\
+     &  & LoRA-over-base & 51.5 & 0.012 &  & $\equiv$ \\
+     &  & RAFT-over-RAG & 52.1 & 0.105 &  & $\equiv$ \\
+    \addlinespace[2pt]
+     & MiniCPM-1B & RAG-over-base & 62.3 & $1.1\!\times\!10^{-22}$ & \checkmark &  \\
+     &  & RAG-over-LoRA & 61.6 & $5.6\!\times\!10^{-14}$ & \checkmark &  \\
+     &  & LoRA-over-base & 53.0 & $7.6\!\times\!10^{-6}$ & \checkmark & $\equiv$ \\
+     &  & RAFT-over-RAG & 50.7 & 0.712 &  & $\equiv$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}

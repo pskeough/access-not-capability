@@ -1,0 +1,362 @@
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% Access, Not Capability -- Overleaf-renderable draft (pdfLaTeX)
+% Every number traces to Final_Validation/STATISTICAL_SUPPLEMENT_VALIDATED.md
+% (V1-V12); grey [Fxx] tags name the receipt and stay until camera-ready.
+% ---------------------------------------------------------------------------
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage[round]{natbib}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+\captionsetup{font=small,labelfont=bf}
+\graphicspath{{figures/}}
+\emergencystretch=1em
+
+% receipt tags, kept in the draft margin until camera-ready
+\newcommand{\rcpt}[1]{\textcolor{gray}{\,\textsf{\scriptsize[#1]}}}
+
+\title{Access, Not Capability: What Retrieval Buys Small Local Models on Private-Corpus QA}
+
+\author{Patrick Keough\\
+\texttt{pskeough@gmail.com}
+\and
+Robert H. Tai\\
+Australian Catholic University}
+
+% TMLR submission is double-blind: replace author block with "Anonymous authors" at submission.
+\date{Draft of July 23, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Organizations holding private document collections increasingly seek question answering over those collections with small locally hosted models, a preference grounded in privacy, cost, and access. Confronting the resulting three-way fork, the practitioner must choose: retrieve over the documents, fine-tune on them, or pay for a frontier API. Our answer is that what a frontier API sells on a private corpus is mostly access to documents the organization already owns, not model capability. Denied the documents, frontier models fail to beat even a 1 billion parameter local model with retrieval in over 90 percent of comparisons. Given identical retrieved context, a grounded judge cannot separate the local 8 billion parameter model from the frontier in roughly three of four comparisons, and the residual frontier edge remains small, bounded (net win-rate 0.600), and no larger against a strong recent 3.8 billion parameter model than against the 8 billion one. Handing the frontier the entire corpus in context changes nothing: in a 90-question-per-model pilot, a whole-corpus frontier gains no larger an edge (net win-rate 0.561 [0.508, 0.614]) than the same frontier earns from retrieval alone, and retrieval beats full context even for the frontier itself (0.433 [0.392, 0.475], the interval entirely below parity). The evidence utilizes four configurations crossed with three local model sizes and three corpora, with every comparison judged grounded and in both presentation orders under family-wise multiple-comparison control and equivalence testing, against three frontier models (GPT-5.1, Claude-Sonnet-4.6, DeepSeek-v4-pro) under byte-identical retrieval. Three supporting findings shape the recommendation. Retrieval stands out as the only lever that helps everywhere, surviving Holm correction in 18 of 18 tests, while LoRA fine-tuning yields small corpus-independent gains and fine-tuning on top of retrieval rarely adds value. Corpus homogeneity, not corpus size, predicts retrieval's value. And retrieval flips abstention behavior with corpus structure, raising correct abstention on unanswerable questions from 62 to 100 percent on the homogeneous corpus while collapsing it from 63 to 17 percent on the heterogeneous one. The recommendation follows: buy retrieval and roughly 4 to 8 billion parameters of local capacity rather than cloud access, measure corpus homogeneity before selecting an architecture, and add an abstention guard on heterogeneous corpora.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+A school district holds twenty years of curriculum documents, a clinic its treatment protocols, a small laboratory the papers its grant rests on, and each wants its staff to ask questions of those documents without sending them to a third party. Facing this build-versus-buy decision, the practitioner finds three paths: attaching a retrieval system to a small local model, fine-tuning that model on the documents, or paying a frontier API per query. Deployment of these systems has outpaced the evidence for choosing among them, which remains anecdotal, single-corpus, or judged without controls for the position, verbosity, and evidence-window artifacts that pairwise LLM judging is known to carry.
+
+This paper supplies a controlled answer: buy retrieval, not cloud access. What a frontier API sells on a private corpus is mostly access to documents the organization already owns; equalizing that access leaves a capability premium that is real but small, bounded, and unchanged by every stress test we ran. Crossing four configurations (base, retrieval, LoRA fine-tuning, and their combination) with three local model sizes and three corpora, one private and two public, we rank the levers under family-wise error control, test the mechanism that predicts when retrieval pays, and decompose the frontier advantage into a component owed to document access and a component owed to model capability. Figure~\ref{fig:ladder} previews the decomposition. Closed-book, the frontier fails to beat the 8 billion parameter local model with retrieval in 95.8 percent of panel-judged comparisons\rcpt{F05}; handed the same retrieved context, it ties that model in roughly 77 percent of pairs under a grounded judge\rcpt{F06}; handed the entire corpus in a million-token window (a pilot arm, Section~\ref{sec:procurement}), it recovers no larger an edge than retrieval already gives it\rcpt{F22}.
+
+One decomposition organizes the paper: the frontier's advantage on a private corpus splits into a component owed to document access and a component owed to model capability, and access is nearly all of it. Surviving a chain of sensitivity analyses spanning judging regime, panel aggregation rule, retrieval success, and corpus, the claim holds at all three local sizes we test and holds when the frontier is handed the entire corpus in its context window\rcpt{F05, F06, F20, F22}. Three supporting findings then shape the practitioner recipe. Retrieval stands out as the only lever that helps on every corpus and every model, surviving global Holm correction in 18 of 18 tests, while LoRA fine-tuning provides small gains and the RAFT recipe of fine-tuning on top of retrieval adds value in only 2 of 9 cells\rcpt{F01}. An exact decomposition of the retrieval effect shows corpus homogeneity, not corpus size, deciding whether off-target retrieval still helps\rcpt{F03}. And retrieval flips abstention behavior with corpus structure, a behavioral hazard with direct deployment consequences\rcpt{F04}.
+
+A tie in this paper means a grounded judging panel could not distinguish the two answers, never that the answers were equal. The frontier edge is real, we quantify it, and the question-level sign test against the 8 billion parameter model reaches p = 2.7e-19\rcpt{F06}. Every number in this paper recomputes from raw model outputs through an independent receipt script, and the claim-to-script-to-receipt map ships as the artifact; the grey bracketed tags throughout the draft name the receipts.
+
+Our contributions are fourfold:
+\begin{enumerate}
+  \item An access-versus-capability decomposition of the frontier advantage on private corpora, validated through sensitivity analyses over judging regime, aggregation rule, retrieval success, corpus, local size, and a whole-corpus long-context arm\rcpt{F05, F06, F07, F11, F20, F22}.
+  \item A family-wise-error-controlled ranking of the three practitioner levers, replicated across domain and an approximately 33 fold corpus-size difference (raw chunk basis), with TOST-certified nulls and judge-free ROUGE triangulation, directly testing the field's synergy claims (RAFT survives in 2 of 9 cells)\rcpt{F01, F09}.
+  \item A measured mechanism, an exact additive decomposition of the retrieval effect joined to an independent homogeneity metric, showing homogeneity rather than corpus size predicts whether off-target retrieval still helps\rcpt{F03}.
+  \item A retrieval-abstention hazard whose sign differs between our homogeneous and heterogeneous corpora (Section~\ref{sec:abstention}), established by a scripted behavioral classifier\rcpt{F04, F12}.
+\end{enumerate}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig1_access_capability_ladder}
+  \caption{The access/capability decomposition as three-outcome records, at all three local sizes. Top, closed-book frontier models (GPT-5.1, Claude-Sonnet-4.6, DeepSeek-v4-pro pooled) against local models with retrieval, judged by a three-judge panel (majority of decisive verdicts, quorum of two); the frontier fails to beat any size in 91 to 98 percent of comparisons (1B and 8B rows n = 595 on the preregistered 200-question subsample; the 3.8B row n = 1{,}025 on the full question set). Bottom, the same frontier models given byte-identical retrieved context, scored by the clean judging protocol (n = 1{,}022 to 1{,}035 per row); ties dominate at 77.4 percent against the 8 billion parameter model, and local decisive wins fall to 1.4 percent. Win, tie, and loss shares are printed on each segment; proportions are shown without intervals here, and the clustered intervals for the same contrasts appear in Table~\ref{tab:frontier} and Figure~\ref{fig:robust}. \rcpt{F05, F06, F20}}
+  \label{fig:ladder}
+\end{figure}
+
+\section{Related work}
+\label{sec:related}
+
+\subsection{Small models with retrieval against large models}
+Atlas established that retrieval-augmented small models can rival much larger closed-book models on knowledge tasks \citep{izacard2023atlas}, and \citet{mallen2023trust} mapped when parametric memory suffices against when retrieval becomes necessary, organized by entity popularity. Our delta is threefold, frontier-era contestants rather than pre-2023 baselines, a byte-identical retrieval control that gives the frontier the same evidence the local model saw, and a private corpus evaluated with panel judging rather than span-overlap metrics. A parallel line asks whether long context windows subsume retrieval outright, with position effects degrading long-context use \citep{liu2024lost}, effective context lengths falling well below advertised windows \citep{hsieh2024ruler}, and direct comparisons on public benchmarks finding long context often stronger for capable models while retrieval stays far cheaper \citep{li2024ragvslong}. We run that contrast directly on a private corpus that fills a million-token window and find the opposite at this scale, retrieval beats full context even for the frontier models themselves (Section~\ref{sec:procurement}).
+
+\subsection{Retrieval against fine-tuning for knowledge injection}
+\citet{ovadia2023finetuning}, \citet{balaguer2024rag}, and \citet{soudani2024finetuning} compared retrieval and fine-tuning for knowledge injection, generally finding retrieval ahead, while RAFT \citep{zhang2024raft} argued the combination outperforms either alone. Most of this evidence rests on single corpora without multiplicity control. We add family-wise error control over the full 36-test family, TOST equivalence certification of the near-null cells, and cross-corpus interaction tests, and we test the RAFT synergy claim directly, finding it in 2 of 9 cells\rcpt{F01}.
+
+\subsection{Irrelevant context and abstention}
+\citet{shi2023distracted} showed irrelevant context degrades reasoning, \citet{cuconasu2024noise} and \citet{yoran2024irrelevant} studied retrieval noise in RAG pipelines, and the selective-QA line \citep{rajpurkar2018squad2, kamath2020selective} formalized answering versus abstaining. Our delta is a corpus-level moderator, we show the harm and the benefit of retrieved context on abstention are organized by a measurable corpus property, homogeneity, and that the behavioral effect flips sign across corpora\rcpt{F04, F12}.
+
+\subsection{Validity of LLM-as-judge}
+\citet{zheng2023judging} introduced pairwise LLM judging along with its position and verbosity biases, \citet{dubois2024length} debiased length effects by design, and \citet{panickssery2024self} documented self-preference. Building on this line, we run every comparison in both presentation orders with strict-agreement consolidation, a design that measurably contains a judge carrying a 73 percent primacy preference, and we quantify two further artifacts, an evidence-window effect and a verbosity reward, before correcting both by protocol\rcpt{F10, F15}.
+
+\section{Study design}
+\label{sec:design}
+
+\subsection{Corpora}
+\label{sec:corpora}
+
+Table~\ref{tab:corpora} summarizes the three corpora. The private corpus comprises 28 published papers from a single research group's collection (13 carry OpenAlex work identifiers), divided into 593 chunks totaling 416,698 tokens; no public QA set or gold answers exist for it, so gold answers were generated by Qwen-2.5-14B and audited, a provenance we return to in Section~\ref{sec:threats}\rcpt{F17}. QASPER \citep{dasigi2021qasper} and COVID-QA \citep{moller2020covidqa} carry human gold. Because the private corpus consists of published papers, we make no contamination-immunity claim by construction; the closed-book floor of Section~\ref{sec:access} serves as the empirical non-memorization probe. Deduplication is disclosed for all three evaluation sets, 315 of 345 unique on the private corpus (the 52 out-of-corpus questions contain 27 unique texts), 381 of 400 on QASPER, and 398 of 400 on COVID-QA\rcpt{F13}. One possible duplicate source paper (``Planning Early'' appearing twice) is flagged for a camera-ready diff\rcpt{F17}.
+
+\begin{table}[tbp]
+  \centering
+  \small
+  \caption{The three corpora. OOC counts unanswerable (out-of-corpus) questions; unique counts deduplicated question texts; homogeneity is reported as TF-IDF centroid similarity and mean pairwise cosine. Public-corpus chunk counts are the raw retriever-store counts re-derived in the validation campaign; public token counts were not re-derived and are omitted rather than approximated. \rcpt{F03, F13, F17}}
+  \label{tab:corpora}
+  \setlength{\tabcolsep}{3.5pt}
+  \footnotesize
+  \begin{tabular}{lllllll}
+    \toprule
+    corpus & gold & eval $n$ (uniq.) & OOC (uniq.) & chunks / tokens & recall@6 & homogeneity \\
+    \midrule
+    Private  & LLM (Qwen-2.5-14B) & 345 (315) & 52 (27) & 593 / 416{,}698 & 0.294 & 0.235 / 0.053 \\
+    COVID-QA & human              & 400 (398) & 0       & 8{,}260 / --    & 0.813 & 0.136 / 0.018 \\
+    QASPER   & human              & 400 (381) & 98      & 19{,}817 / --   & 0.232 & 0.140 / 0.019 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Models and configurations}
+Three local models span the consumer-hardware range, Llama-3.1-8B, Phi-4-mini (3.8 billion parameters), and MiniCPM (1 billion parameters). Each runs in four configurations, \texttt{base}, \texttt{rag} (top-6 retrieval-augmented generation \citep{lewis2020rag}), \texttt{lora}, and \texttt{lora\_rag}. The retrieval stack is one fixed design choice held constant across every configuration: hybrid BM25 plus dense retrieval (Nomic Embed Text v1.5) fused by reciprocal rank, a BGE cross-encoder rerank, and the top 6 chunks served identically wherever retrieval appears. On the private corpus it operates over 1{,}024-token chunks (the 593 chunks of Table~\ref{tab:corpora}). Its parameters were locked by one retrieval sweep before the final runs and never revisited; Section~\ref{sec:limitations} names the stack among the study's fixed hyperparameters. The fine-tuning recipe, QLoRA \citep{dettmers2023qlora, hu2022lora} with continued pretraining followed by supervised fine-tuning, was frozen once and applied unchanged to every model and corpus, so cross-corpus differences cannot be attributed to recipe tuning.
+
+\subsection{Judging protocol}
+\label{sec:judging}
+
+All quality comparisons are pairwise and grounded, the judge receives the question, the gold answer, and the gold evidence. Every pair is judged in both presentation orders, and we consolidate with a strict agreement rule, a question is decisive for a configuration only when both orders name that same configuration, with any disagreement, any tie verdict, or any missing order counted as a tie. Win-rates count ties as one half. Within-model comparisons use a single grounded judge (Qwen3.6-Flash, temperature 0, fixed seed); a pre-registered bridge sample re-judged 75 of its within-model pairs with the frontier panel, and the single judge agrees with the panel majority at Krippendorff's $\alpha$ = 0.84 (89 percent exact agreement), so the paper's two result families sit on one measurement scale\rcpt{F19}. The frontier comparison adds a family-firewalled three-judge panel (Gemini, Mistral, and Kimi; no judge shares a model family with any contestant, with the model that wrote the gold answers, or with the model that wrote the fine-tuning pairs), consolidated per judge and then by majority of decisive verdicts with a quorum of two, plus a gold-anchor arena. One labeling note applies throughout, the lever we call RAG-over-LoRA denotes \texttt{lora\_rag} versus \texttt{lora}, retrieval added on top of the fine-tuned model, not \texttt{rag} versus \texttt{lora}.\footnote{A naive reading of the label as \texttt{rag} versus \texttt{lora} produces different counts and does not reproduce any table in this paper.\rcpt{F01}}
+
+The frontier comparison uses a clean-judge protocol motivated by two artifacts our own audit surfaced. With a capped evidence window, expanding the window flipped ties to the frontier 20 to 0 (exact binomial p = 1.9e-6), and on independent re-reading roughly 14 to 15 of those 20 flips rewarded verbosity rather than correctness\rcpt{F15}. The clean protocol therefore places the full retrieved context in the judge's evidence window and adds a de-verbosity rubric line (shipped verbatim in the artifact). Generation used max\_tokens of 512 (the DeepSeek arm was regenerated at 4{,}096 after the token-cap incident of Section~\ref{sec:threats}), and a silent temperature-drop-on-error fallback path existed in the generation stack; both are disclosed\rcpt{F08, F10}.
+
+\subsection{Statistics}
+Within-model effects use exact McNemar tests \citep{mcnemar1947note} on discordant pairs, with the full 36-test family controlled by Holm \citep{holm1979simple} and, as a sensitivity variant, Benjamini-Hochberg \citep{benjamini1995controlling}. Near-null cells are tested for equivalence by Schuirmann's TOST \citep{schuirmann1987tost} at a margin of $\pm$0.05. Lever-by-corpus interactions use G-tests with question-block permutation as a clustering guard. The frontier arm is estimation-first because three frontier models share each question set, we report question-clustered bootstrap intervals and question-level sign tests, with descriptive p-values and no significance stars. Triangulation beyond the judge comes from Bradley-Terry rankings \citep{bradley1952rank} with Krippendorff's $\alpha$ \citep{krippendorff2004content} for panel agreement, and from judge-free ROUGE-L \citep{lin2004rouge}.
+
+\section{Access, not capability}
+\label{sec:access}
+
+This section establishes the title claim: closed-book, the frontier loses to a local model of any size we test once that model has retrieval; handed the identical retrieved context, it recovers only a small, bounded edge.
+
+\subsection{The access gap}
+\label{sec:accessgap}
+
+Run closed-book, the three frontier models fail to beat the 8 billion parameter local model with retrieval in 95.8 percent of panel-judged comparisons, and fail against the 1 billion parameter model in 91.4 percent, with outright frontier losses at 75.0 and 65.9 percent (Figure~\ref{fig:ladder}; the panel judged a 200-question subsample per matchup, and single-judge figures over the full sets are 98.8 and 96.0 percent)\rcpt{F05}. A model without the documents losing on document QA surprises nobody. What the floor supplies is its magnitude and the failure-mode split: GPT-5.1 attempts an answer on 49.9 percent of questions with losses dominated by hallucinated content, while Claude-Sonnet-4.6 and DeepSeek-v4-pro formally abstain on 66 to 77 percent, a threshold-sensitive band (classifier rules in Appendix~\ref{app:classifier})\rcpt{F05}. The scoring is fair to abstention, since across all 98 pure-abstain pairs on out-of-corpus questions the frontier model is never scored as losing\rcpt{F05}. Because the private corpus consists of published papers, this floor doubles as the empirical non-memorization probe promised in Section~\ref{sec:corpora}. The news of this result sits in Section~\ref{sec:premium}, the size of the premium once access is equalized.
+
+\subsection{The capability premium}
+\label{sec:premium}
+
+\begin{table}[tbp]
+  \centering
+  \small
+  \caption{Frontier versus local under byte-identical retrieval, clean judging protocol, strict both-orders consolidation. F/L/T are frontier wins, local wins, and ties over pairs; net win-rate counts ties as half; intervals are question-clustered bootstrap (5{,}000 resamples). Per-cell question counts run 342 to 344 on the private corpus (attrition disclosed); the 3.8 billion parameter row runs on all 345; the QASPER frontier cells run on a 200-question subsample of the 400-question set (149 answerable, 51 out-of-corpus). \rcpt{F06, F07, F20}}
+  \label{tab:frontier}
+  \begin{tabular}{llcccc}
+    \toprule
+    cell & F/L/T & net win-rate [95\% CI] & local not-lose & tie share \\
+    \midrule
+    GPT-5.1 vs 8B (private)      & 66/5/271  & 0.589 & 0.807 & -- \\
+    Claude-4.6 vs 8B (private)   & 87/3/254  & 0.622 & 0.747 & -- \\
+    DeepSeek-v4 vs 8B (private)  & 66/6/272  & 0.587 & 0.808 & -- \\
+    \midrule
+    pooled vs 8B, private, all       & 219/14/797 & 0.600 [0.580, 0.620] & 0.787 & 0.774 \\
+    pooled vs 8B, private, answerable & 219/14/641 & 0.618 [0.595, 0.641] & 0.749 & 0.733 \\
+    pooled vs 8B, QASPER, answerable & 85/20/342  & 0.573 [0.543, 0.603] & 0.810 & 0.765 \\
+    pooled vs 3.8B, private, all     & 149/27/859 & 0.559 [0.541, 0.577] & 0.856 & 0.830 \\
+    pooled vs 1B, private, all       & 467/14/548 & 0.720 [0.695, 0.746] & 0.546 & 0.532 \\
+    pooled vs 1B, QASPER, answerable & 250/14/183 & 0.764 [0.726, 0.802] & 0.441 & 0.409 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:frontier} gives the same-retrieval comparison. Leading with the three-outcome record, the clean judge ties the 8 billion parameter model with the frontier on 77.4 percent of pairs, the frontier wins 91 to 97 percent of the decisive minority, and local decisive wins number 14 of 1{,}030 pairs (1.4 percent)\rcpt{F06}. The pooled net win-rate is 0.600 with a question-clustered interval of [0.580, 0.620], rising to 0.618 on answerable questions, and the question-level sign test is 98 to 10 (p = 2.7e-19). Independent re-reading of judge verdicts (Appendix~\ref{app:cases}) shows the frontier's edge concentrating in fine-detail extraction by the local model, a misread effect size, a wrong regression type, a false abstention\rcpt{F15}.
+
+\subsection{Stability of the estimate}
+\label{sec:robustness}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=0.95\textwidth]{fig5_robustness_chain}
+  \caption{The estimate of the capability premium under every variation we tested (private-corpus pooled cells n = 1{,}030 pairs; HIT/MISS strata and QASPER cells as in Appendix~\ref{app:hitmiss}). Judging regime moves the pooled net win-rate from 0.573 (capped panel) to 0.600 (clean protocol); the five main panel aggregation rules span 0.540 to 0.575, with unanimous-only, a sixth and strictest variant, at 0.535; stratifying by retrieval success leaves the premium statistically unchanged (HIT minus MISS delta of +0.009 [-0.037, +0.057] on the private corpus); the public-corpus replication lands at 0.573 [0.543, 0.603]. The shaded band is the headline 95 percent interval (legend). \rcpt{F06, F11, F15}}
+  \label{fig:robust}
+\end{figure}
+
+Figure~\ref{fig:robust} assembles the chain of checks that makes the claim land. Moving from the capped panel to the clean protocol shifts the pooled estimate from 0.573 to 0.600, the two judge artifacts of Section~\ref{sec:judging} roughly canceling; a capped single-judge cross-check (0.573 to 0.578) isolates the protocol change from the panel-to-single change\rcpt{F06, F15}. Across the five main panel aggregation rules the net win-rate spans 0.540 to 0.575, with unanimous-only, the strictest variant, at 0.535, and requiring two decisive judges in agreement raises local not-lose to 0.835\rcpt{F15}. Excluding the DeepSeek arm entirely leaves the pooled estimate at 0.606 with not-lose 0.777, so the headline is not carried by any single frontier vendor\rcpt{F17}, and the question-clustered sign test survives even the least favorable judging regime (capped panel, 60 to 26, p = 3.2e-4)\rcpt{F06}. The decisive-verdict provenance splits 51 unanimous, 59 two-to-one, 66 single-decisive, and 5 two-judge\rcpt{F15}.
+
+The stratification by retrieval success answers the strongest attack we could construct against the headline, the hypothesis that the 77 percent tie mass merely reflects both models failing to see the gold passage at a recall of 0.294. Stratifying every clean-judged pair by whether a gold chunk sat in the shared top-6, the HIT minus MISS delta in net win-rate is +0.009 [-0.037, +0.057] on the private corpus and +0.057 [-0.029, +0.142] on QASPER, with all four pooled cells' intervals containing zero\rcpt{F11}. The 8 billion parameter model ties the frontier roughly 77 percent of the time even when the gold chunk is in context, so the tie mass reflects capability, not mutual blindness. Finally, the result replicates on public QASPER at 0.573 [0.543, 0.603] with answerable not-lose of 0.810; under the original capped single judge the same arm gave 0.524 with not-lose 0.906\rcpt{F06, F07}.
+
+\subsection{Contamination control: the QASPER inversion}
+\label{sec:contamination}
+
+A naive reading of the closed-book results suggests the frontier looks stronger on public QASPER (frontier win-rate 0.446 on the 200-question QASPER frontier subsample against 0.157 on the private corpus), inviting a memorization explanation. Stratification dissolves it. The entire lift sits in the out-of-corpus stratum, where abstention is the correct response and earns a frontier win-rate of 0.833; on answerable public questions the closed-book frontier loses just as it does on the private corpus, a frontier win-rate of 0.313 with local not-lose of 0.982\rcpt{F07}. Frontier models do not recall public QASPER answers either, so the private-corpus access gap is not a memorization artifact.
+
+\subsection{The size floor}
+The capability premium is no larger against the 3.8 billion parameter model than against the 8 billion one; only the 1 billion configuration leaves the frontier a real edge. Against the 1 billion parameter model under identical retrieval, the frontier's net win-rate rises to 0.720 [0.695, 0.746] on the private corpus and 0.764 [0.726, 0.802] on QASPER\rcpt{F06}; against the intermediate 3.8 billion parameter model, judged by the same clean protocol on the same full question set, it falls to 0.559 [0.541, 0.577], at or slightly below its 0.600 against the 8 billion parameter model (Table~\ref{tab:frontier})\rcpt{F20}. Closed-book, the story is the same at every size, the frontier fails to beat the 3.8 billion parameter model in 97.6 percent of panel-judged comparisons, level with the 91.4 and 95.8 percent it manages against the 1 and 8 billion parameter models, so the access gap is size-independent\rcpt{F20}. The ladder is therefore not a graded size response. The frontier's edge is large only against the 1 billion configuration, and the strong recent 3.8 billion parameter model matches or edges the older 8 billion one, a two-model contrast on one corpus that reads as model quality mattering more than raw size once capacity clears roughly 4 billion parameters. The capped-evidence panel reproduces the ordering\rcpt{F20}, and one caveat holds on the closed-book figures, the 1 and 8 billion arms used the preregistered 200-question subsample while the 3.8 billion arm ran on the full 345.
+
+\subsection{The procurement arm: full context does not rescue the frontier}
+\label{sec:procurement}
+The same-retrieval comparison hands the frontier the top-6 chunks the local model used. A procurement-minded reader asks the harder question, what if the frontier is given the whole corpus, the 416,698-token collection that fits a modern million-token window. We ran that arm as a pilot, the full corpus in context for every question, on the two frontier models whose windows hold it. GPT-5.1's does not, its 400{,}000-token window is smaller than the 416{,}698-token corpus and the endpoint rejects the request, so full context is not even an option for one of the three frontier models, a first result in its own right. Against the local 8 billion parameter model with retrieval, a frontier handed the entire corpus scores a net win-rate of 0.561 [0.508, 0.614] pooled over the two models, and the pooling hides real heterogeneity we report rather than average away: Claude gains a modest edge (0.622) while DeepSeek sits at exact parity (0.500); pooled, the whole-corpus arm's 0.561 does not exceed the 0.600 the same frontier earns with retrieval alone, and the local model is not beaten in 89 percent of comparisons\rcpt{F22}. Handing the frontier everything does not widen the access gap. And for the frontier itself, retrieval beats full context in both models, its own top-6 retrieval outscores its whole-corpus version at a net 0.433 [0.392, 0.475] pooled (Claude 0.478, DeepSeek 0.389), the interval falling entirely below parity, direct evidence at full-corpus scale of the degradation the long-context literature documents, positional loss \citep{liu2024lost} and effective context lengths well below advertised windows \citep{hsieh2024ruler}\rcpt{F22}. The corpus enters the window in its natural file order, one ordering per question, so position effects are folded into the estimate rather than tuned away, the realistic naive paste a practitioner would run. The pilot covers 90 questions per model under the clean judge, and it points one way, buying the frontier at full strength buys no more than retrieval already provides, and retrieval remains the better way to deliver the documents even to the frontier.
+
+\subsection{A tested null}
+Corpus heterogeneity does not grow the frontier premium. The QASPER estimate of 0.573 sits at or below the private-corpus values of 0.600 to 0.618 under clean judging, so the homogeneity variable of Section~\ref{sec:mechanism} organizes the lever, mechanism, and abstention results but not this one\rcpt{F07}.
+
+\subsection{Cost}
+\label{sec:cost}
+
+\begin{table}[tbp]
+  \centering
+  \small
+  \caption{Frontier API generation cost per 1{,}000 questions (USD), measured from logged token usage at current list prices. Local figures are marginal API cost only; hardware is assumed owned, and no latency or total-cost-of-ownership claim is made. \rcpt{F14}}
+  \label{tab:cost}
+  \begin{tabular}{lccc}
+    \toprule
+    setting & GPT-5.1 & Claude-Sonnet-4.6 & DeepSeek-v4-pro \\
+    \midrule
+    closed-book                       & \$1.44 & \$1.70  & \$0.29 \\
+    with retrieval ($\sim$4.5k-token context) & \$6.31 & \$16.34 & \$2.20 \\
+    \midrule
+    local 8B (any setting)            & \multicolumn{3}{c}{\$0 marginal API cost} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:cost} prices the alternatives. Serving 1{,}000 retrieval-augmented questions through the frontier APIs costs between \$2.20 and \$16.34 in generation alone, against zero marginal API cost for the local 8 billion parameter model on owned hardware. Combined with the access gap and the bounded capability premium, the cost table is what earns the democratization framing of Section~\ref{sec:conclusion}, the gap between a small organization and a frontier lab on private-document QA is document access plus one consumer GPU, not API budget. We make no latency or throughput claim, neither was measured.
+
+\section{The lever ranking: buy retrieval, not fine-tuning}
+\label{sec:levers}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig2_lever_forest}
+  \caption{All 36 within-model lever cells (answerable questions, strict both-orders consolidation, ties counted as half). Horizontal bars are 95 percent confidence intervals; per-cell $n$ is 293 (private), 393 to 400 (COVID-QA), and 302 (QASPER), as in Table~\ref{tab:levers}. Filled markers survive global Holm correction over the 36-test family; open markers do not; $\equiv$ marks cells TOST-equivalent to the null at $\pm$0.05. Retrieval helps everywhere; fine-tuning helps a little everywhere it helps at all; the RAFT synergy appears in 2 of 9 cells. \rcpt{F01}}
+  \label{fig:forest}
+\end{figure}
+
+\begin{table}[tbp]
+  \centering
+  \small
+  \caption{Win-rates (percent, ties as half) for the four levers across all 36 cells, answerable questions only. $\checkmark$ survives global Holm (family of 36); $\equiv$ is TOST-equivalent to the null at $\pm$0.05. Per-cell $n$: private 293, COVID-QA 400 (MiniCPM 393--395 from 76 missing raw rows, disclosed), QASPER 302. RAG-over-LoRA denotes \texttt{lora\_rag} versus \texttt{lora}. MiniCPM QASPER cells are affected by the generation truncation disclosed in the text (136, 78, and 23 of 400 answers on \texttt{lora\_rag}, \texttt{lora}, and \texttt{rag}); read those cells with that caveat. \rcpt{F01}}
+  \label{tab:levers}
+  \begin{tabular}{llcccc}
+    \toprule
+    corpus & model & RAG-over-base & RAG-over-LoRA & LoRA-over-base & RAFT-over-RAG \\
+    \midrule
+    Private  & Llama-8B   & 84.1\,$\checkmark$ & 87.0\,$\checkmark$ & 48.8\,$\equiv$ & 53.8 \\
+    Private  & Phi-3.8B   & 84.8\,$\checkmark$ & 81.7\,$\checkmark$ & 55.8\,$\checkmark$ & 48.3\,$\equiv$ \\
+    Private  & MiniCPM-1B & 81.2\,$\checkmark$ & 81.6\,$\checkmark$ & 53.2\,$\checkmark\equiv$ & 53.9 \\
+    COVID-QA & Llama-8B   & 86.4\,$\checkmark$ & 85.5\,$\checkmark$ & 53.0\,$\checkmark\equiv$ & 52.1\,$\equiv$ \\
+    COVID-QA & Phi-3.8B   & 83.6\,$\checkmark$ & 80.4\,$\checkmark$ & 54.4\,$\checkmark$ & 50.9\,$\equiv$ \\
+    COVID-QA & MiniCPM-1B & 79.2\,$\checkmark$ & 82.2\,$\checkmark$ & 54.9\,$\checkmark$ & 58.0\,$\checkmark$ \\
+    QASPER   & Llama-8B   & 59.6\,$\checkmark$ & 59.3\,$\checkmark$ & 53.5\,$\checkmark$ & 54.6\,$\checkmark$ \\
+    QASPER   & Phi-3.8B   & 60.9\,$\checkmark$ & 60.4\,$\checkmark$ & 51.5\,$\equiv$ & 52.2\,$\equiv$ \\
+    QASPER   & MiniCPM-1B & 62.3\,$\checkmark$ & 61.6\,$\checkmark$ & 52.9\,$\checkmark\equiv$ & 50.7\,$\equiv$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+If the frontier's advantage is access, the practitioner's question becomes which lever buys that access best. Table~\ref{tab:levers} and Figure~\ref{fig:forest} present all 36 within-model cells. Retrieval is the first lever. It wins 59.3 to 87.0 percent of comparisons across the 18 retrieval cells and survives global Holm correction in all 18 (RAG-over-base and RAG-over-LoRA combined)\rcpt{F01}. Fine-tuning is the second, with LoRA-over-base gains of roughly 2 to 6 points, 7 of 9 surviving Holm, and several near-null cells certified TOST-equivalent to no effect, indicating low returns on effort from fine-tuning alone. Across three training seeds on two cells, the seed standard deviation is 0.004 on the TOST-null private Llama cell and 0.009 on the Holm-surviving private Phi cell, where the roughly six-point effect is about six times its own seed noise (Section~\ref{sec:limitations})\rcpt{F18}. RAFT is the final and weakest lever, surviving in only 2 of 9 cells, COVID-QA with MiniCPM at 58.0 percent (p = 3.7e-6) and QASPER with Llama at 54.6 percent (p = 7.6e-4). Under the Benjamini-Hochberg variant the tally moves to 29 of 36 (LoRA 8 of 9, RAFT 3 of 9), leaving the ordering unchanged.
+
+Examining the interaction structure sharpens the picture. Retrieval's effect shrinks on the heterogeneous corpus, an interaction decisive for both retrieval levers (G = 26.5 and 39.8, both under 10\textsuperscript{-6} and confirmed by question-block permutation), while LoRA and RAFT show no corpus interaction at all (minimum p = 0.091)\rcpt{F02}. One scope qualifier applies, the retrieval interaction is carried by Llama and Phi while MiniCPM sits saturated, so it should not be read as uniform across sizes\rcpt{F02}.
+
+A caveat box belongs here. On QASPER, MiniCPM exhibits generation truncation in 136 of 400 \texttt{lora\_rag} answers, 78 \texttt{lora} answers, and 23 \texttt{rag} answers, a symmetric collapse at judge time that we disclose so the affected cells are read with appropriate caution\rcpt{F10}. The practitioner reading of this section is short, spending belongs on retrieval rather than fine-tuning, and RAFT rarely adds value on top of an existing RAG pipeline. Judge-free ROUGE-L reproduces the configuration ordering on all 9 corpus-model rows (Appendix~\ref{app:rouge})\rcpt{F09}.
+
+\section{Corpus structure, not size, predicts retrieval's value}
+\label{sec:mechanism}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig3_mechanism}
+  \caption{The mechanism behind Section~\ref{sec:mechanism} (Llama-8B, answerable questions; $n$ = 293 private, 400 COVID-QA, 302 QASPER). (a) The decomposition $\text{aggregate} = r \cdot w_{\text{hit}} + (1-r) \cdot w_{\text{miss}}$ holds exactly on every corpus; lighter segments show the miss-side contribution. (b) Miss-win plotted against TF-IDF centroid homogeneity for the three corpora, three points shown without a fitted line and without intervals; the private corpus and QASPER sit in a similar low-recall band (0.294 against 0.232) yet differ in miss-win by 0.826 against 0.532, a pattern consistent with homogeneity rather than corpus size as the governing variable. \rcpt{F03}}
+  \label{fig:mechanism}
+\end{figure}
+
+Retrieval wins everywhere, but by margins that range from 59.6 to 86.4 percent, and this section supplies the variable that predicts the difference. Writing $r$ for retrieval recall@6, $w_{\text{hit}}$ for the win-rate when a gold chunk is retrieved, and $w_{\text{miss}}$ for the win-rate when none is, the aggregate retrieval effect obeys the identity
+\begin{equation}
+  \text{aggregate} \;=\; r \cdot w_{\text{hit}} \;+\; (1-r) \cdot w_{\text{miss}},
+\end{equation}
+which holds exactly on all three corpora\rcpt{F03}. Two regimes emerge from the decomposition. COVID-QA is recall-driven, a recall of 0.813 multiplied by a hit-win of 0.931 produces nearly the entire aggregate of 0.864. The private corpus and QASPER instead separate on the miss side, sitting in a similar low-recall band (0.294 against 0.232) while their miss-win rates diverge, 0.826 against 0.532.
+
+The controlled contrast carries the inference. Between the private corpus and QASPER lies an approximately 33 fold corpus size gap, yet their recall values nearly coincide, and what tracks the miss-win divergence is the homogeneity gap, 1.68 fold on TF-IDF centroid similarity and 2.8 fold on mean pairwise cosine (Table~\ref{tab:corpora}). On a homogeneous corpus, retrieval that misses the gold chunk still surfaces topically adjacent text that helps the model; on a heterogeneous corpus the same miss surfaces text from an unrelated paper. With three corpora supplying three homogeneity points, we state the relationship as consistent with homogeneity governing miss-win rather than proven by it, and a fourth corpus at intermediate homogeneity stands as the natural extension. As a practitioner diagnostic the implication is direct and cheap, TF-IDF homogeneity of the corpus can be measured before any architecture decision, predicting both the expected benefit of retrieval here and the abstention hazard of Section~\ref{sec:abstention}.
+
+\section{Retrieval flips abstention behavior with corpus structure}
+\label{sec:abstention}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig4_abstention_flip}
+  \caption{The abstention sign-flip (scripted classifier, rules in Appendix~\ref{app:classifier}; panels a and c: Llama-8B; panel b: pooled over the three local models). (a) Correct abstention on unanswerable questions moves from 61.5 to 100 percent under retrieval on the homogeneous private corpus (n = 52) and from 63.3 to 17.3 percent on heterogeneous QASPER (n = 98). (b) RAG-over-base win-rate on unanswerables with text-clustered 95 percent intervals, 0.705 (n = 156 pairs over 27 unique texts) against 0.221 (n = 294), disjoint. (c) Under retrieval, QASPER engages 93.9 percent of unanswerables, and every engaged answer is an error. \rcpt{F04, F12}}
+  \label{fig:abstention}
+\end{figure}
+
+Add retrieval, and the same 8 billion parameter model's correct abstention on unanswerable questions moves from 61.5 to 100 percent on the homogeneous corpus (n = 52) and collapses from 63.3 to 17.3 percent on the heterogeneous one (n = 98), the model engaging with plausible-looking but irrelevant retrieved text; every behavioral number here comes from a deterministic scripted rule set rather than judge impressions\rcpt{F12}.
+
+The pairwise endpoints separate just as cleanly, the RAG-over-base win-rate on unanswerables pooled across the three models is 0.705 on the private corpus (n = 156 pairs over 27 unique texts; text-clustered interval [0.59, 0.83]) against 0.221 on QASPER (n = 294; [0.19, 0.26]), disjoint intervals that hold per-model 3 of 3\rcpt{F04}. The direction is classifier-robust, under the stricter pure-abstain-only rule the same collapse runs 58 to 6 of 98\rcpt{F04, F12}. On answerable private-corpus questions the same mechanism is a benefit, false abstention drops from 85.7 to 11.3 percent. The beneficial direction generalizes across local size, with retrieval turning answerable-versus-unanswerable discrimination from negative to strongly positive Youden's J on the homogeneous corpus for all three models (base and LoRA J from $-0.43$ to $-0.01$, every retrieval configuration $+0.68$ to $+0.91$)\rcpt{F21}. A risk-coverage reading makes the deployment hazard concrete, QASPER under retrieval engages 93.9 percent of unanswerables (self-rejecting only 6 percent) in a setting where every engaged answer is an error, while the engaged-answer quality gain from retrieval is negligible at +0.007 ROUGE-L, locating the harm in behavior rather than in answer quality\rcpt{F12}.
+
+Two scoping notes apply. With two corpora the contrast supports two-corpus language only, the flip holds on the homogeneous corpus against the heterogeneous one, and gold provenance differs between them (LLM against human), a confound we disclose. The organizing variable is the same homogeneity measure as Section~\ref{sec:mechanism}, and we read the connection as consistent with the mechanism rather than demonstrated.\footnote{An earlier informal spot-check of abstention frequency had the direction backwards; every behavioral number here derives from the scripted classifier, whose rules ship verbatim in the artifact.\rcpt{F12}} The practitioner consequence is one sentence, a heterogeneous corpus joined to an unanswerable-heavy workload requires an abstention guard before deployment.
+
+\section{Threats to validity}
+\label{sec:threats}
+
+We treat this section as a result in its own right, every threat below was measured rather than assumed\rcpt{F10, F13, F15}.
+
+\textbf{Judge biases.} Position bias measures 0.490 to 0.497 across runs, and the both-orders design demonstrably contains the worst case, the mistral judge prefers the first-presented answer on 73.1 percent of its decisive raw verdicts, yet strict both-orders consolidation fully absorbs the bias. Verbosity preference is clean within-model (0.501, 0.429, 0.484, with COVID-QA favoring shorter answers). The two frontier-judging artifacts, the evidence-window effect (20 to 0 tie-flips, p = 1.9e-6) and the verbosity reward (roughly 14 to 15 of those 20 flips), were found by our own audit and corrected by the clean protocol of Section~\ref{sec:judging}.
+
+\textbf{Panel.} Krippendorff's $\alpha$ runs 0.57 (0.565) to 0.64 across panel runs, moderate agreement, rising to 0.75 with the position-biased mistral judge excluded, direct evidence the both-orders consolidation contains the one biased judge\rcpt{F15}; the rule-sensitivity table of Figure~\ref{fig:robust} spans 0.540 to 0.575 across the five main rules; kimi judge attrition (122 of 125 two-judge units) is outcome-neutral, with the frontier-local gap preserved in the attrited units.
+
+\textbf{Data integrity.} Evaluation sets are hash-locked (SHA-256 verified across run snapshots), corpus routing is exact (1.0 on all 18 cells, zero empty retrievals), per-cell counts are disclosed everywhere they deviate (capped single-judge frontier arm 334 to 345, clean-protocol cells 342 to 344; COVID-QA MiniCPM 393 to 395), and deduplication is disclosed for all three corpora.
+
+\textbf{Gold provenance.} Private-corpus gold is LLM-generated (Qwen-2.5-14B). Mitigations are layered, two of three corpora carry human gold, the frontier judging panel contains no Qwen-family model, judge-free ROUGE-L reproduces the configuration ordering, and a human-gold re-annotation of the private corpus (a blind, stratified, seeded pairwise protocol shipped in the artifact) is in progress and will fold into the camera-ready version. The within-model grid (the lever ranking, the mechanism, and the abstention result) is scored by a Qwen-family judge against that Qwen-written gold. The design mitigates this structurally rather than by assumption, both configurations in every pair are scored against the same gold by the same judge in both orders (any judge-gold affinity applies symmetrically to the pair), judge-free ROUGE-L reproduces the ordering, and the cross-judge bridge of Section~\ref{sec:judging} shows the Qwen judge agreeing with the non-Qwen panel majority at $\alpha$ = 0.84\rcpt{F19}.
+
+\textbf{Process evidence.} A token-cap incident in the DeepSeek arm was found, fixed, and verified at the answer level, 16 of 24 first-run decisive local wins dissolved on re-judging, 14 of them provable exact-512-token truncations, with corrected deltas of +0.011 to +0.036, and the first run carried 41 exact-512 answers against zero after the fix\rcpt{F08}. A second incident, a wrong-corpus retrieval defect in one configuration arm, was caught by an exact retrieved-chunk-ID namespace audit and the arm re-run, which is why corpus routing is verified at 1.0 on all 18 cells above; both detections (an exact-length histogram spike at the generation cap, and chunk-ID namespace membership) are judge-free integrity checks that generalize beyond this study. Reproducibility is structural, every number re-derives from raw outputs via the receipt scripts, and the claim-to-script-to-receipt map ships with the paper.
+
+\section{Limitations}
+\label{sec:limitations}
+
+Three corpora supply three homogeneity points, so the mechanism of Section~\ref{sec:mechanism} is stated as consistent-with, upgradeable by a fourth corpus at intermediate homogeneity. The frontier comparison covers two corpora and three local sizes, all three placed on one clean-protocol row on the private corpus, and it answers both the controlled capability question (same retrieval) and the procurement question (the frontier handed the entire corpus, Section~\ref{sec:procurement}). The long-context arm is a pilot at 90 questions per model on the two frontier windows that hold the 416,698-token corpus; scaling it to the full question set and to more long-context models, and a frontier-native long-context arm on the public corpora, are the natural extensions. Gold on the headline corpus is LLM-generated pending the human re-annotation. Judge agreement is moderate. Each training configuration in the main grid ran once under a fixed seed, so the replication axis of the study is models and corpora rather than seeds; three-seed replicates of two cells (LoRA-over-base on the private corpus, seeds 42, 43, and 44, identical grounded judging) bound the seed noise at standard deviations of 0.004 on the TOST-null Llama cell and 0.009 on the Holm-surviving Phi cell, against effects of 2 to 6 points, so the lever ranking sits well clear of training-seed noise on both replicated cells\rcpt{F18}. The retrieval stack of Section~\ref{sec:design} was locked by one pre-study sweep and then held fixed, and a private-corpus recall@6 of 0.294 leaves retriever quality a live variable this study does not explore, so the reported retrieval effects describe one reasonable stack rather than retrieval at its best. No latency or total-cost-of-ownership measurement was taken, and calibration analysis in the ECE style was infeasible without a logprob-capturing rerun. Absolute quality leaves headroom for every model, the gold anchor dominates all six Bradley-Terry rankings, and three never-beaten anchors are non-convergent maximum-likelihood estimates we report as lower bounds\rcpt{F09}.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+In summary, the frontier's advantage on private corpora is access, not capability, and the recipe that follows has two steps. Retrieval comes first, necessary and dominant: denied document access, even frontier models fail on unseen content. Capacity matters up to a point, with the 3.8 billion parameter configuration already closing most of the residual gap the 1 billion one leaves open and sitting level with the 8 billion one under a matched judge, the remaining premium small, bounded, concentrated in fine detail, and statistically unchanged by retrieval success. Corpus homogeneity, measurable for pennies with TF-IDF before any training run, predicts both the size of the retrieval benefit and the abstention hazard, with low homogeneity joined to unanswerable-heavy workloads calling for an explicit abstention guard. Fine-tuning demotes to an optional refinement, two to six points where it helps at all (7 of 9 cells), corpus-independent, worth the effort only when the last points matter. The equity reading follows from the cost table rather than from assertion: on private-document QA the distance between a school district and a frontier laboratory is document access plus one consumer GPU, not an API budget. One asymmetry deserves final statement. This is an access result and never a capability reversal; the frontier remains the more capable model and simply gets out-competed wherever it lacks the documents the local model can retrieve.
+
+\section*{Reproducibility statement}
+Every number in this paper re-derives from raw model outputs, offline, through one of twenty-two receipt scripts (F01 through F22) shipped with the artifact, and a 186-claim ledger, extended by the dated 2026-07 addenda for the seed replicates, the cross-judge bridge, the 3.8 billion parameter frontier arm, the cross-size abstention discrimination, and the whole-corpus long-context procurement arm, walks each sentence of prose to its script and its receipt (Appendix~\ref{app:repro}). Raw outputs for the two public corpora ship in full; private-corpus raw files stay with the corpus under the data-availability terms, so re-derivation of the headline-corpus numbers is available to auditors rather than to the public. The training seed is 42 everywhere, the per-model, per-corpus configurations were frozen before the final runs, and the evaluation sets are SHA-256 hash-locked, every downstream phase checking the hash before it will run. Each training configuration in the main grid ran once, so replication in this study runs across models and corpora rather than seeds; three-seed replicates of two cells bound training-seed variance well below the reported effects (Section~\ref{sec:limitations}).
+
+\section*{Data availability}
+The artifact carries everything we can lawfully hand over, the full pipeline and analysis code, the recompute scripts and their claim-to-receipt map, the judge prompts and rubrics, the homogeneity metric, and the complete QASPER and COVID-QA evaluation sets with their human gold. The private corpus does not travel. Its 28 papers are copyright-protected published articles we have no right to redistribute, so the collection stays local along with the LLM-generated gold derived from it, and we document provenance instead, 13 of 28 papers carrying OpenAlex work identifiers through which a reader with lawful access can rebuild part of the corpus.
+
+\section*{Broader impact}
+We read the results as an equity finding first. A school district, a clinic, or a small laboratory holding its own documents and one consumer GPU closes most of the distance to a frontier laboratory on private-corpus QA, and the documents never leave the building, which is the point for organizations bound by privacy obligations. The hazard of Section~\ref{sec:abstention} deserves equal billing, on a heterogeneous corpus retrieval drove engagement with 93.9 percent of unanswerable questions in a setting where every engaged answer was wrong, so a deployment without an abstention guard converts missing knowledge into confident misinformation. No human subjects were involved, no personal data was processed, and the corpus consists of published research papers.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\appendix
+
+\section{Per-cell tables}
+\label{app:cells}
+Table~\ref{tab:levers} reports all 36 within-model cells with Holm and TOST markings; Table~\ref{tab:frontier} reports the frontier cells with per-cell pair counts. Table~\ref{tab:percell} prints the underlying statistics the body figures show only as markers, the exact McNemar $p$-value, Holm survival, and TOST verdict for every cell. Raw win/loss/tie triples and bootstrap intervals re-derive from the shipped receipt scripts (Appendix~\ref{app:repro}).
+
+\input{percell_stats_table}
+
+\section{The homogeneity diagnostic}
+\label{app:homogeneity}
+The corpus-homogeneity covariate of Section~\ref{sec:mechanism} is a judge-free, offline TF-IDF measure a practitioner can run before any training. On a seed-1337 sample of up to 1{,}200 chunks per corpus (chunks under 20 words dropped as title or stub fragments so the measure reflects text, not headers), a single TF-IDF vectorizer with identical settings for every corpus (\texttt{max\_features}=5000, English stop-words, sublinear term frequency, minimum document frequency 2, L2-normalized rows) produces three quantities: the mean cosine similarity over 40{,}000 random chunk pairs, the mean cosine to the corpus centroid (topical concentration), and the ratio of across-paper to within-paper similarity (a homogeneous corpus scores across $\approx$ within). The private corpus and QASPER separate cleanly on all three (Table~\ref{tab:corpora} reports the centroid and pairwise figures), and it is this gap, not the roughly 33-fold chunk-count gap between them, that tracks the miss-win divergence of Section~\ref{sec:mechanism}. The metric ships in the artifact\rcpt{F03}.
+
+\section{Judging protocol details}
+\label{app:judging}
+Consolidation is strict both-orders as defined in Section~\ref{sec:judging}, a pair is decisive only when both presentation orders name the same side, and incomplete pairs are excluded from $n$ (five single-order private-corpus pairs were dropped, reproducing the published counts exactly). The panel rule is majority of decisive per-judge verdicts with a quorum of two judges; the decisive-verdict provenance over the pooled frontier-versus-8B cell splits 51 unanimous, 59 two-to-one, 66 single-decisive, and 5 two-judge. The clean-judge protocol places the full retrieved context in the evidence window (clean judge: Gemini-3-Flash, temperature 0.2) and appends the following de-verbosity rubric line, quoted verbatim from the artifact: ``IMPORTANT - judge on correctness and grounding, not elaboration. A longer or more detailed answer is NOT better unless the extra content is (a) asked for by the question and (b) correct and supported by the evidence. If both candidates correctly answer what the question asks and are supported by the evidence, return TIE even if one is longer or adds unrequested detail. Prefer a candidate only when it is more correct, covers more of what the question specifically asks, or is better grounded in the evidence - never for verbosity alone.'' Decoding used max\_tokens of 512 (DeepSeek arm regenerated at 4{,}096; Section~\ref{sec:threats}) with a temperature-drop-on-error fallback, disclosed in Section~\ref{sec:judging}.
+
+\section{Judge case studies}
+\label{app:cases}
+The mistral judge prefers the first-presented answer in 73.1 percent of decisive raw verdicts (pure position-flip rate 17.8 percent against 1.2 percent for gemini and 9.4 percent for kimi), and strict both-orders consolidation contains the bias entirely, its panel contribution moving the pooled estimate by under 0.035. The evidence-window experiment re-judged 120 sampled pairs with the full context, producing the flip matrix with rows capped and columns full-evidence of (26, 1, 2), (0, 1, 0), and (20, 0, 70), agreement 0.808, with the 20 to 0 tie-to-frontier flips significant at p = 1.9e-6 and 14 to 15 of the 20 classified as verbosity rewards on independent re-reading\rcpt{F15}.
+
+\section{Abstention classifier}
+\label{app:classifier}
+The classifier is a deterministic regex rule set over answer text with no model calls, assigning each answer to exactly one of pure-abstain, hedged, or substantive. Rule 1 detects abstention sentences (refusal and missing-context patterns), Rule 2 detects offer-to-help filler, and Rule 3 detects hedge bridges into general knowledge; the decision uses a priori thresholds of 12 residual words with a hedge bridge or 30 without\rcpt{F05}. Threshold sensitivity is reported as bands, Claude's pure-abstain rate spans 67.8 to 80.3 percent over the threshold sweep, and the full rule text ships verbatim in the receipt. The within-model application of Section~\ref{sec:abstention} extends the abstention-sentence patterns with local-model phrasings the frontier-tuned rules missed; the extended rule set ships in the artifact alongside the original\rcpt{F12}.
+
+\section{ROUGE triangulation and arena}
+\label{app:rouge}
+Judge-free ROUGE-L reproduces the configuration ordering, retrieval configurations above non-retrieval, on all 9 corpus-model rows (private Llama row 0.223, 0.480, 0.172, 0.559 for base, rag, lora, lora\_rag), with repetition collapse load-bearing for the MiniCPM rows\rcpt{F09}. In the gold-anchored Bradley-Terry arena the gold answer dominates all six rankings, and three never-beaten anchors are non-convergent maximum-likelihood estimates reported as lower bounds at 400 iterations.
+
+\section{Hit/miss stratification}
+\label{app:hitmiss}
+On the private corpus the pooled frontier-versus-8B cell splits into a HIT stratum (86 questions, 258 pairs, net 0.607 [0.568, 0.649]) and a MISS stratum (258 questions, 772 pairs, net 0.597 [0.574, 0.621]); on QASPER the strata give 0.616 [0.537, 0.694] and 0.559 [0.529, 0.590]. All four HIT-minus-MISS deltas have intervals containing zero\rcpt{F11}.
+
+\section{Reproducibility and cost ledger}
+\label{app:repro}
+Every quantitative claim in this paper maps to a receipt document and an idempotent recompute script that re-derives the claim from raw model outputs offline; the validation campaign re-verified 186 claims, finding 132 exact matches, 25 corrections (none overturning a headline conclusion; the one directional error, an informal abstention spot-check, is disclosed in Section~\ref{sec:abstention}), 22 new results, and 7 retired claims. The campaign's design is worth stating, each claim carries a verdict (match, corrected, new, or retired), a coverage matrix sweeps every results document so no quantitative claim goes unaudited, and intermediate JSONs are treated as comparison targets, never as sources; the same discipline caught the sign-backwards abstention spot-check, two stale decomposition rows, and the cost-logging artifact below. The honest API cost ledger totals approximately \$45 through the 2026-06 validation campaign, with the 2026-07 addenda adding \$16.94 for the 3.8 billion parameter frontier arm\rcpt{F20} plus the whole-corpus long-context pilot; the first frontier pilot logged \$0.95 nominally but cost approximately \$14.7 once resumed input tokens and correct judge pricing are counted, a logging artifact we disclose\rcpt{F14}.
+
+\end{document}
