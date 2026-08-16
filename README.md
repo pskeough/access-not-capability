@@ -48,4 +48,4 @@ empirical claim re-derives from the receipts in this repository.
 
 ## License
 
-Code: Apache-2.0 · Paper text and figures: CC BY 4.0 · Derived data: CC BY 4.0 (please cite)
+Code: MIT ([LICENSE](LICENSE)) · Paper text, figures and derived data: CC BY-NC-ND 4.0 ([LICENSE-DATA](LICENSE-DATA))
