@@ -31,9 +31,12 @@ adversarial revalidation ledger (132 exact matches, 25 corrections, 22 new resul
 as [`CLAIMS_LEDGER.md`](CLAIMS_LEDGER.md), with the validated statistical supplement at
 [`STATISTICAL_SUPPLEMENT_VALIDATED.pdf`](STATISTICAL_SUPPLEMENT_VALIDATED.pdf).
 
-Known open gate (disclosed in the paper): the private-corpus reference answers are
-LLM-drafted and LLM-judged; an external human-gold review is in progress and gates the
-TMLR submission, not this working release.
+Closed gate (disclosed as open in the paper draft in this release): the private-corpus
+reference answers are LLM-drafted and LLM-judged, and the judge shared their model family.
+The external human-gold review that addresses this is complete. Robert H. Tai authored gold
+answers for 50 items on 22 August 2026, without sight of the machine gold, and a
+multi-rater human-judge pass followed in September. Those receipts are not in this release
+yet; the manuscript here predates them and the TMLR version supersedes it.
 
 ## Context
 
